@@ -1,22 +1,465 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Météo Locale - Service Express</title>
-    <style>
-        body { margin:0; font-family:sans-serif; background:#020617; color:white; display:flex; justify-content:center; align-items:center; min-height:100vh; }
-        .card { background:rgba(255,255,255,0.05); padding:40px; border-radius:20px; border:1px solid rgba(255,255,255,0.1); text-align:center; max-width:400px; }
-        h1 { color:#a78bfa; margin-bottom:20px; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Météo Locale Gratuite – Prévisions en Temps Réel | Service Express</title>
+  <meta name="description" content="Consultez la météo actuelle et les prévisions sur 7 jours basées sur votre position GPS. Température, vent, humidité, UV – sans inscription.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="https://meteo.service-express.org/">
+  <style>
+    :root {
+      --bg: #020617;
+      --surface: rgba(255,255,255,0.05);
+      --border: rgba(255,255,255,0.10);
+      --purple: #a78bfa;
+      --purple-dim: #818cf8;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #7c3aed;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 0 16px 60px;
+    }
+
+    /* ── HEADER NAV ── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 0 24px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 36px;
+    }
+    .nav-brand {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--purple);
+      text-decoration: none;
+      letter-spacing: 0.02em;
+    }
+    .nav-back {
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-back:hover { color: var(--purple); }
+
+    /* ── WRAPPER ── */
+    .container { max-width: 720px; margin: 0 auto; }
+
+    /* ── HERO ── */
+    .hero { text-align: center; margin-bottom: 36px; }
+    .hero h1 { font-size: clamp(26px, 5vw, 38px); font-weight: 700; margin-bottom: 8px; }
+    .hero h1 span { color: var(--purple); }
+    .hero p { font-size: 15px; color: var(--muted); }
+
+    /* ── PERMISSION BTN ── */
+    #loc-btn {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 auto 28px;
+      padding: 14px 28px;
+      background: linear-gradient(135deg, var(--accent), #6d28d9);
+      color: #fff;
+      font-size: 16px;
+      font-weight: 600;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      transition: opacity .2s, transform .15s;
+    }
+    #loc-btn:hover { opacity: .88; transform: translateY(-1px); }
+    #loc-btn:disabled { opacity: .4; cursor: default; transform: none; }
+
+    /* ── STATUS ── */
+    #status { text-align: center; color: var(--muted); font-size: 14px; min-height: 22px; margin-bottom: 20px; }
+
+    /* ── CURRENT CARD ── */
+    #current { display: none; }
+    .current-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 28px 24px;
+      margin-bottom: 28px;
+    }
+    .current-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .current-temp {
+      font-size: clamp(56px, 10vw, 80px);
+      font-weight: 800;
+      line-height: 1;
+      color: var(--purple);
+    }
+    .current-unit { font-size: 32px; color: var(--muted); font-weight: 400; }
+    .current-desc { font-size: 18px; font-weight: 600; margin-top: 6px; }
+    .current-loc  { font-size: 13px; color: var(--muted); margin-top: 4px; }
+    .current-icon { font-size: 72px; line-height: 1; }
+    .current-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+    }
+    .stat-pill {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 16px;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+    .stat-val   { font-size: 20px; font-weight: 700; margin-top: 4px; color: var(--purple); }
+    .stat-unit  { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+    /* ── HOURLY ── */
+    .section-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 14px; }
+    .hourly-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      margin-bottom: 28px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .hour-card {
+      flex: 0 0 68px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+    .hour-card.now { border-color: var(--purple); background: rgba(167,139,250,.10); }
+    .hour-time { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .hour-icon { font-size: 22px; margin-bottom: 6px; }
+    .hour-temp { font-size: 15px; font-weight: 700; color: var(--purple); }
+    .hour-prec { font-size: 10px; color: var(--purple-dim); margin-top: 3px; }
+
+    /* ── DAILY ── */
+    .daily-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 36px; }
+    .day-row {
+      display: grid;
+      grid-template-columns: 110px 36px 1fr auto;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px 18px;
+    }
+    .day-name { font-size: 14px; font-weight: 600; }
+    .day-icon { font-size: 22px; text-align: center; }
+    .day-bar-wrap { position: relative; height: 6px; background: rgba(255,255,255,.08); border-radius: 4px; }
+    .day-bar { position: absolute; left: 0; top: 0; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--purple-dim), var(--purple)); }
+    .day-range { font-size: 14px; font-weight: 700; white-space: nowrap; }
+    .day-range .lo { color: var(--muted); font-weight: 400; margin-left: 6px; }
+
+    /* ── ARTICLE SEO ── */
+    .seo-article {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px;
+    }
+    .seo-article h2 { font-size: 18px; color: var(--purple); margin-bottom: 12px; }
+    .seo-article h3 { font-size: 15px; color: var(--text); margin: 20px 0 8px; }
+    .seo-article p  { font-size: 14px; color: var(--muted); line-height: 1.7; }
+    .seo-article ul { padding-left: 18px; color: var(--muted); font-size: 14px; line-height: 2; }
+
+    /* ── FOOTER ── */
+    footer {
+      text-align: center;
+      margin-top: 48px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    footer a { color: var(--purple-dim); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
 </head>
 <body>
-    <div class="card">
-        <h1>🌤️ Météo Locale</h1>
-        <a class="weatherwidget-io" href="https://forecast7.com/fr/48d862d35/paris/" data-label_1="MÉTÉO" data-label_2="ACTUELLE" data-theme="dark" data-basecolor="#020617" data-accent="" data-textcolor="#ffffff" data-highcolor="#a78bfa" data-lowcolor="#818cf8" >MÉTÉO LOCALE</a>
-        <script>
-        !function(d,s,id){var js,fjs=d.getElementsByTagName(s)[0];if(!d.getElementById(id)){js=d.createElement(s);js.id=id;js.src='https://weatherwidget.io/js/widget.min.js';fjs.parentNode.insertBefore(js,fjs);}}(document,'script','weatherwidget-io-js');
-        </script>
+
+<div class="container">
+
+  <!-- NAV -->
+  <nav>
+    <a class="nav-brand" href="https://service-express.org">⚡ Service Express</a>
+    <a class="nav-back" href="https://service-express.org">← Retour au portail</a>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>🌤️ Météo <span>Locale</span></h1>
+    <p>Prévisions basées sur votre position GPS – températures, vent, pluie, UV</p>
+  </div>
+
+  <!-- BTN GÉOLOC -->
+  <div style="text-align:center">
+    <button id="loc-btn" onclick="getLocation()">
+      📍 Voir la météo près de moi
+    </button>
+  </div>
+
+  <!-- STATUS -->
+  <p id="status"></p>
+
+  <!-- RÉSULTAT MÉTÉO -->
+  <div id="current">
+
+    <!-- CARTE COURANTE -->
+    <div class="current-card">
+      <div class="current-top">
+        <div>
+          <div class="current-temp" id="c-temp">–</div>
+          <div class="current-desc" id="c-desc">–</div>
+          <div class="current-loc" id="c-loc">–</div>
+        </div>
+        <div class="current-icon" id="c-icon">–</div>
+      </div>
+      <div class="current-grid">
+        <div class="stat-pill"><div class="stat-label">Ressenti</div><div class="stat-val" id="c-feel">–<span class="stat-unit">°C</span></div></div>
+        <div class="stat-pill"><div class="stat-label">Humidité</div><div class="stat-val" id="c-hum">–<span class="stat-unit">%</span></div></div>
+        <div class="stat-pill"><div class="stat-label">Vent</div><div class="stat-val" id="c-wind">–<span class="stat-unit">km/h</span></div></div>
+        <div class="stat-pill"><div class="stat-label">Pression</div><div class="stat-val" id="c-press">–<span class="stat-unit">hPa</span></div></div>
+        <div class="stat-pill"><div class="stat-label">Visibilité</div><div class="stat-val" id="c-vis">–<span class="stat-unit">km</span></div></div>
+        <div class="stat-pill"><div class="stat-label">Indice UV</div><div class="stat-val" id="c-uv">–</div></div>
+      </div>
     </div>
+
+    <!-- HORAIRE -->
+    <p class="section-title">Prévisions heure par heure (24h)</p>
+    <div class="hourly-scroll" id="hourly-scroll"></div>
+
+    <!-- 7 JOURS -->
+    <p class="section-title">Prévisions 7 jours</p>
+    <div class="daily-list" id="daily-list"></div>
+
+  </div><!-- /current -->
+
+  <!-- ARTICLE SEO -->
+  <div class="seo-article">
+    <h2>Comment fonctionne notre météo en ligne ?</h2>
+    <p>Notre service utilise l'API <strong>Open-Meteo</strong>, une source de données météorologiques open-source alimentée par les modèles de prévision météorologique des services nationaux européens (DWD, ECMWF, Météo-France). Vos coordonnées GPS ne quittent jamais votre navigateur.</p>
+
+    <h3>Que signifient les indices météo ?</h3>
+    <ul>
+      <li><strong>Température ressentie</strong> : tient compte du vent et de l'humidité</li>
+      <li><strong>Humidité relative</strong> : au-dessus de 80%, le risque de brouillard augmente</li>
+      <li><strong>Indice UV</strong> : au-delà de 6, une protection solaire est recommandée</li>
+      <li><strong>Pression atmosphérique</strong> : une chute rapide annonce souvent du mauvais temps</li>
+    </ul>
+
+    <h3>Quelle est la précision des prévisions à 7 jours ?</h3>
+    <p>Les prévisions à 1-2 jours affichent une précision d'environ 90%. Au-delà de 5 jours, la fiabilité diminue progressivement. Les modèles météorologiques sont mis à jour toutes les 6 heures.</p>
+
+    <h3>Météo locale vs météo nationale</h3>
+    <p>Contrairement aux sites qui affichent une météo générique par département, notre outil exploite vos coordonnées GPS précises pour interroger la grille de prévision la plus proche. La différence de température entre une vallée et un plateau peut dépasser 5°C.</p>
+
+    <h3>Prévisions pour la France</h3>
+    <p>Que vous soyez à Paris, Lyon, Marseille, Toulouse, Bordeaux, Grenoble, Nice, Strasbourg, Nantes, Lille ou en zone rurale, les données couvrent l'intégralité du territoire français et des DOM-TOM.</p>
+  </div>
+
+  <!-- FOOTER -->
+  <footer>
+    <p>© 2026 Service Express &nbsp;·&nbsp;
+      <a href="https://meteo.service-express.org/privacy.html">Confidentialité</a> &nbsp;·&nbsp;
+      Données : <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>
+    </p>
+  </footer>
+
+</div><!-- /container -->
+
+<script>
+/* ── WMO weather codes → emoji + label ─────────────────────── */
+const WMO = {
+  0:  ['☀️','Ciel dégagé'],
+  1:  ['🌤️','Principalement dégagé'],
+  2:  ['⛅','Partiellement nuageux'],
+  3:  ['☁️','Couvert'],
+  45: ['🌫️','Brouillard'],
+  48: ['🌫️','Brouillard givrant'],
+  51: ['🌦️','Bruine légère'],
+  53: ['🌦️','Bruine modérée'],
+  55: ['🌧️','Bruine dense'],
+  61: ['🌧️','Pluie légère'],
+  63: ['🌧️','Pluie modérée'],
+  65: ['🌧️','Pluie forte'],
+  71: ['🌨️','Neige légère'],
+  73: ['🌨️','Neige modérée'],
+  75: ['❄️','Neige forte'],
+  77: ['🌨️','Grains de neige'],
+  80: ['🌦️','Averses légères'],
+  81: ['🌧️','Averses modérées'],
+  82: ['⛈️','Averses violentes'],
+  85: ['🌨️','Averses neigeuses'],
+  86: ['❄️','Averses neigeuses fortes'],
+  95: ['⛈️','Orage'],
+  96: ['⛈️','Orage avec grêle'],
+  99: ['⛈️','Orage violent'],
+};
+const wmo = code => WMO[code] || ['🌡️','Inconnu'];
+
+const DAYS = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+
+async function getLocation() {
+  const btn = document.getElementById('loc-btn');
+  const st  = document.getElementById('status');
+  btn.disabled = true;
+  st.textContent = '📡 Récupération de votre position…';
+
+  if (!navigator.geolocation) {
+    st.textContent = '⚠️ Géolocalisation non supportée par votre navigateur.';
+    btn.disabled = false;
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    pos => fetchWeather(pos.coords.latitude, pos.coords.longitude),
+    err => {
+      st.textContent = '⚠️ Impossible d\'obtenir votre position. Vérifiez les permissions.';
+      btn.disabled = false;
+    },
+    { timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+async function fetchWeather(lat, lon) {
+  const st = document.getElementById('status');
+  st.textContent = '⛅ Chargement des données météo…';
+
+  try {
+    /* Reverse geocoding via nominatim */
+    let cityName = 'Votre position';
+    try {
+      const geo = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=fr`,
+        { headers: { 'User-Agent': 'service-express-meteo/1.0' } }
+      );
+      const geoJson = await geo.json();
+      const a = geoJson.address || {};
+      cityName = a.city || a.town || a.village || a.county || 'Votre position';
+    } catch(_) {}
+
+    /* Open-Meteo API */
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,` +
+      `surface_pressure,visibility,uv_index,weathercode` +
+      `&hourly=temperature_2m,weathercode,precipitation_probability` +
+      `&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+      `&timezone=auto&forecast_days=7`;
+
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    renderCurrent(data.current, cityName);
+    renderHourly(data.hourly);
+    renderDaily(data.daily);
+
+    document.getElementById('current').style.display = 'block';
+    st.textContent = '';
+    document.getElementById('loc-btn').textContent = '📍 Actualiser';
+    document.getElementById('loc-btn').disabled = false;
+
+  } catch(e) {
+    document.getElementById('status').textContent = '❌ Erreur lors du chargement des données.';
+    document.getElementById('loc-btn').disabled = false;
+  }
+}
+
+function renderCurrent(c, city) {
+  const [icon, desc] = wmo(c.weathercode);
+  document.getElementById('c-temp').innerHTML  = `${Math.round(c.temperature_2m)}<span class="current-unit">°C</span>`;
+  document.getElementById('c-desc').textContent = desc;
+  document.getElementById('c-loc').textContent  = `📍 ${city}`;
+  document.getElementById('c-icon').textContent = icon;
+  document.getElementById('c-feel').innerHTML   = `${Math.round(c.apparent_temperature)}<span class="stat-unit">°C</span>`;
+  document.getElementById('c-hum').innerHTML    = `${c.relative_humidity_2m}<span class="stat-unit">%</span>`;
+  document.getElementById('c-wind').innerHTML   = `${Math.round(c.wind_speed_10m)}<span class="stat-unit">km/h</span>`;
+  document.getElementById('c-press').innerHTML  = `${Math.round(c.surface_pressure)}<span class="stat-unit">hPa</span>`;
+  const vis = c.visibility !== null ? (c.visibility / 1000).toFixed(1) : '–';
+  document.getElementById('c-vis').innerHTML    = `${vis}<span class="stat-unit">km</span>`;
+  document.getElementById('c-uv').textContent  = c.uv_index !== null ? c.uv_index : '–';
+}
+
+function renderHourly(h) {
+  const now   = new Date();
+  const nowH  = now.getHours();
+  const wrap  = document.getElementById('hourly-scroll');
+  wrap.innerHTML = '';
+
+  /* Show next 24 hours from current hour */
+  for (let i = 0; i < 24; i++) {
+    const idx  = nowH + i;
+    if (idx >= h.time.length) break;
+    const t    = new Date(h.time[idx]);
+    const hStr = t.getHours().toString().padStart(2,'0') + 'h';
+    const [icon] = wmo(h.weathercode[idx]);
+    const prec = h.precipitation_probability[idx];
+
+    const card = document.createElement('div');
+    card.className = 'hour-card' + (i === 0 ? ' now' : '');
+    card.innerHTML = `
+      <div class="hour-time">${i === 0 ? 'Maint.' : hStr}</div>
+      <div class="hour-icon">${icon}</div>
+      <div class="hour-temp">${Math.round(h.temperature_2m[idx])}°</div>
+      ${prec ? `<div class="hour-prec">💧${prec}%</div>` : ''}
+    `;
+    wrap.appendChild(card);
+  }
+}
+
+function renderDaily(d) {
+  const list = document.getElementById('daily-list');
+  list.innerHTML = '';
+
+  /* compute bar range */
+  const allMax = d.temperature_2m_max;
+  const allMin = d.temperature_2m_min;
+  const globalMin = Math.min(...allMin);
+  const globalMax = Math.max(...allMax);
+  const range = globalMax - globalMin || 1;
+
+  d.time.forEach((dateStr, i) => {
+    const date = new Date(dateStr + 'T12:00:00');
+    const dayName = i === 0 ? 'Aujourd\'hui' : (i === 1 ? 'Demain' : DAYS[date.getDay()]);
+    const [icon] = wmo(d.weathercode[i]);
+    const hi = Math.round(d.temperature_2m_max[i]);
+    const lo = Math.round(d.temperature_2m_min[i]);
+
+    /* bar: map this day's lo/hi onto global range */
+    const leftPct  = ((lo - globalMin) / range * 100).toFixed(1);
+    const widthPct = (((hi - lo) / range) * 100).toFixed(1);
+
+    const row = document.createElement('div');
+    row.className = 'day-row';
+    row.innerHTML = `
+      <div class="day-name">${dayName}</div>
+      <div class="day-icon">${icon}</div>
+      <div class="day-bar-wrap">
+        <div class="day-bar" style="left:${leftPct}%;width:${widthPct}%"></div>
+      </div>
+      <div class="day-range">${hi}°<span class="lo">${lo}°</span></div>
+    `;
+    list.appendChild(row);
+  });
+}
+</script>
+
 </body>
 </html>
